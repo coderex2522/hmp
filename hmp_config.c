@@ -12,7 +12,17 @@
 #define HMP_ADDR_STR "addr"
 #define HMP_PORT_STR "port"
 
-static int hmp_parse_node(int index, xmlDocPtr doc, xmlNodePtr curnode)
+static void hmr_print_nodes_info(struct hmp_config *global_config)
+{
+	int i;
+	for(i=0;i<global_config->node_cnt;i++){
+		INFO_LOG("id %d",global_config->node_infos[i].id);
+		INFO_LOG("addr %s",global_config->node_infos[i].addr);
+		INFO_LOG("port %d",global_config->node_infos[i].port);
+	}
+}
+
+static int hmp_parse_node(struct hmp_config *config, int index, xmlDocPtr doc, xmlNodePtr curnode)
 {
 	xmlChar *val;
 
@@ -20,14 +30,14 @@ static int hmp_parse_node(int index, xmlDocPtr doc, xmlNodePtr curnode)
 	while(curnode!=NULL){
 		if(!xmlStrcmp(curnode->name, (const xmlChar *)HMP_ADDR_STR)){
 			val=xmlNodeListGetString(doc, curnode->xmlChildrenNode, 1);
-			memcpy(global_config.node_infos[index].addr,
+			memcpy(config->node_infos[index].addr,
 				(const void*)val,strlen((const char*)val)+1);
 			xmlFree(val);
 		}
 
 		if(!xmlStrcmp(curnode->name, (const xmlChar *)HMP_PORT_STR)){
 			val=xmlNodeListGetString(doc, curnode->xmlChildrenNode, 1);
-			global_config.node_infos[index].port=atoi((const char*)val);
+			config->node_infos[index].port=atoi((const char*)val);
 			xmlFree(val);
 		}
 
@@ -36,17 +46,7 @@ static int hmp_parse_node(int index, xmlDocPtr doc, xmlNodePtr curnode)
 	return 0;
 }
 
-static void hmr_print_nodes_info()
-{
-	int i;
-	for(i=0;i<global_config.node_cnt;i++){
-		INFO_LOG("id %d",global_config.node_infos[i].id);
-		INFO_LOG("addr %s",global_config.node_infos[i].addr);
-		INFO_LOG("port %d",global_config.node_infos[i].port);
-	}
-}
-
-int hmp_config_init()
+int hmp_config_init(struct hmp_config *config)
 {
 	const char *config_file=HMP_CONFIG_FILE;
 	xmlDocPtr config_doc;
@@ -71,31 +71,24 @@ int hmp_config_init()
 		ERROR_LOG("xml root node is not nodes_info.");
 		goto cleandoc;
 	}
-	global_config.node_cnt=0;
+	config->node_cnt=0;
 	curnode=curnode->xmlChildrenNode;
 	while(curnode){
 		if(!xmlStrcmp(curnode->name, (const xmlChar *)HMP_NODE_STR)){
 			id=xmlGetProp(curnode, (const xmlChar *)HMP_ID_STR);
-			global_config.node_infos[index].id=atoi((const char*)id);
-			hmp_parse_node(index,  config_doc, curnode);
-			global_config.node_cnt++;
+			config->node_infos[index].id=atoi((const char*)id);
+			hmp_parse_node(config, index, config_doc, curnode);
+			config->node_cnt++;
 			index++;
 		}
 		curnode=curnode->next;
 	}
 	
-	hmr_print_nodes_info();
+	hmr_print_nodes_info(config);
 	xmlFreeDoc(config_doc);
 	return 0;
 	
 cleandoc:
 	xmlFreeDoc(config_doc);
 	return -1;
-}
-
-
-int main()
-{
-	hmp_config_init();
-	return 0;
 }

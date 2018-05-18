@@ -8,10 +8,21 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <linux/list.h>
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
+#endif
+#define min(a,b) (a>b?b:a)
+
+struct hmp_config;
+struct hmp_context;
+//struct hmp_transport;
+struct hmp_node;
 
 
 enum hmp_log_level{
@@ -22,6 +33,7 @@ enum hmp_log_level{
 	HMP_LOG_LEVEL_TRACE,
 	HMP_LOG_LEVEL_LAST
 };
+
 
 
 void* hmp_malloc(int length);

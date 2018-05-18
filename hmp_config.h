@@ -16,5 +16,5 @@ struct hmp_config{
 	int node_cnt;
 };
 
-struct hmp_config global_config;
+int hmp_config_init(struct hmp_config *config);
 #endif
