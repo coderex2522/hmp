@@ -1,14 +1,24 @@
 #ifndef HMP_NODE_H
 #define HMP_NODE_H
 
+struct hmp_hash_node{
+	uint32_t key;
+	int node_id;
+	struct list_head hash_node_list_entry;
+};
+
 struct hmp_node{
 	struct hmp_config config;
 	struct hmp_context *ctx;
 
-	struct hmp_transport listen_trans;
+	int listen_port;
+	struct hmp_transport *listen_trans;
+	struct hmp_transport *connect_trans[HMP_NODE_NUM];
 	
 	int num_devices;
 	struct list_head dev_list;
+
+	struct list_head hash_node_list;
 };
 
 struct hmp_node curnode;

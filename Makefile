@@ -20,8 +20,11 @@ hmp_transport.o:hmp_transport.c
 	
 hmp_node.o:hmp_node.c
 	gcc -Wall -g	-c -o $@ $^ -lpthread
+
+hmp_murmur_hash.o:hmp_murmur_hash.c
+	gcc -Wall -g	-c -o $@ $^
 	
-test:hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_node.o test.o
+test:hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_node.o hmp_murmur_hash.o test.o
 	gcc -Wall -g $^ -o $@  ${LDFLAGS}
 	
 clean:

@@ -14,6 +14,9 @@
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 
+#define HMP_NODE_NUM 8
+
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
@@ -34,6 +37,20 @@ enum hmp_log_level{
 	HMP_LOG_LEVEL_LAST
 };
 
+enum hmp_msg_type{
+	HMP_MSG_MR,
+	HMP_MSG_NORMAL,
+	HMP_MSG_READ,
+	HMP_MSG_WRITE,
+	HMP_MSG_FINISH,
+	HMP_MSG_DONE
+};
+
+struct hmp_msg{
+	enum hmp_msg_type msg_type;
+	int  data_size;
+	void *data;
+};
 
 
 void* hmp_malloc(int length);
