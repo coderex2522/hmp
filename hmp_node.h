@@ -14,14 +14,17 @@ struct hmp_node{
 	int listen_port;
 	struct hmp_transport *listen_trans;
 	struct hmp_transport *connect_trans[HMP_NODE_NUM];
+
+	/*about memory*/
+	struct hmp_mempool *dram_mempool;
+	void *hybrid_mempool_base;
+	long long alloc_len;
 	
 	int num_devices;
 	struct list_head dev_list;
 
 	struct list_head hash_node_list;
 };
-
-struct hmp_node curnode;
 
 void hmp_node_init();
 

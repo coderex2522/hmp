@@ -13,7 +13,7 @@
 
 pthread_once_t init_pthread=PTHREAD_ONCE_INIT;
 pthread_once_t release_pthread=PTHREAD_ONCE_INIT;
-
+extern struct hmp_node curnode;//define in the hmp_node.c
 
 /**
  *these functions is used for init devices.
@@ -93,7 +93,7 @@ static void hmp_device_init_handle(void)
 
 void hmp_transport_init()
 {
-	pthread_once(&init_pthread,hmp_device_init_handle);
+	pthread_once(&init_pthread, hmp_device_init_handle);
 }
 /**
  *these functions is used for free devices.

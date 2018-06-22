@@ -16,7 +16,6 @@
 
 #define HMP_NODE_NUM 8
 
-
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 #endif
@@ -24,7 +23,6 @@
 
 struct hmp_config;
 struct hmp_context;
-//struct hmp_transport;
 struct hmp_node;
 
 
@@ -52,12 +50,11 @@ struct hmp_msg{
 	void *data;
 };
 
-
 void* hmp_malloc(int length);
 
 void hmp_free(void *addr, int length);
 
-int hmp_read(void *dst, void *src, int length);
+int hmp_read(void *local_dst, void *hm_src, int length);
 
-int hmp_write(void *dst, void *src, int length);
+int hmp_write(void *hm_dst, void *local_src, int length);
 #endif
