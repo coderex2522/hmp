@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <assert.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -13,6 +14,8 @@
 #include <linux/list.h>
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
+
+#include "hmp_rbtree.h"
 
 #define HMP_NODE_NUM 8
 

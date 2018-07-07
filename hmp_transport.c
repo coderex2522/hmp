@@ -44,8 +44,7 @@ static struct hmp_device *hmp_device_init(struct ibv_context *verbs)
 	}
 
 	dev->verbs=verbs;
-	INIT_LIST_HEAD(&dev->dev_list_entry);
-
+	INIT_LIST_HEAD(&dev->dev_list_entry); 
 	return dev;
 	
 cleandev:
@@ -58,6 +57,7 @@ static void hmp_device_init_handle(void)
 {
 	struct ibv_context **ctx_list;
 	struct hmp_device *dev;
+	const char *dev_name;
 	int i,num_devices=0;
 
 	INIT_LIST_HEAD(&curnode.dev_list);
@@ -75,6 +75,12 @@ static void hmp_device_init_handle(void)
 			curnode.num_devices--;
 			continue;
 		}
+		dev_name=ibv_get_device_name(ctx_list[i]->device);
+		if(strcmp(dev_name,"siw_lo")==0){
+			curnode.num_devices--;
+			continue;
+		}
+		
 		dev=hmp_device_init(ctx_list[i]);
 		if(!dev){
 			ERROR_LOG("RDMA device [%d]: name= %s allocate error.",
@@ -82,12 +88,12 @@ static void hmp_device_init_handle(void)
 			curnode.num_devices--;
 			continue;
 		}
-		else
+		else{
+			list_add(&dev->dev_list_entry,&curnode.dev_list);
 			INFO_LOG("RDMA device [%d]: name= %s allocate success.",
-					i, ibv_get_device_name(ctx_list[i]->device));
-		list_add(&dev->dev_list_entry,&curnode.dev_list);
+								i, ibv_get_device_name(ctx_list[i]->device));
+		}
 	}
-
 	rdma_free_devices(ctx_list);
 }
 
@@ -398,12 +404,14 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 	struct rdma_conn_param conn_param;
 	int retval=0;
 
-	INFO_LOG("event id %p rdma_trans cm_id %p event_listenid %p",event->id,rdma_trans->cm_id,event->listen_id);
+	//INFO_LOG("event id %p rdma_trans cm_id %p event_listenid %p",event->id,rdma_trans->cm_id,event->listen_id);
+	
 	new_trans=hmp_transport_create(rdma_trans->nodeptr, rdma_trans->ctx);
 	if(!new_trans){
 		ERROR_LOG("rdma trans process connect request error.");
 		return -1;
 	}
+	INFO_LOG("new trans %p", new_trans);
 	new_trans->cm_id=event->id;
 	event->id->context=new_trans;
 	new_trans->device=hmp_device_lookup(new_trans->nodeptr, event->id->verbs);
@@ -417,7 +425,7 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 		ERROR_LOG("hmp qp create error.");
 		return retval;
 	}
-
+	
 	memset(&conn_param, 0, sizeof(conn_param));
 	retval=rdma_accept(new_trans->cm_id, &conn_param);
 	if(retval){
@@ -430,8 +438,8 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 
 static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *rdma_trans)
 {
-	int retval=0;
-
+	int i,retval=0;
+	char *peer_addr;
 	memcpy(&rdma_trans->local_addr,
 		&rdma_trans->cm_id->route.addr.src_sin,
 		sizeof(rdma_trans->local_addr));
@@ -441,7 +449,17 @@ static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *
 		sizeof(rdma_trans->peer_addr));
 
 	rdma_trans->trans_state=HMP_TRANSPORT_STATE_CONNECTED;
+
+	peer_addr=inet_ntoa(rdma_trans->peer_addr.sin_addr);
+	INFO_LOG("peer inet addr %s",peer_addr);
 	
+	for(i=0;i<curnode.config.curnode_id;i++){
+		if(strcmp(curnode.config.node_infos[i].addr,peer_addr)==0){
+			INFO_LOG("find addr trans %d %s",i,peer_addr);
+			curnode.connect_trans[i]=rdma_trans;
+			break;
+		}
+	}
 	return retval;
 }
 
@@ -589,6 +607,8 @@ int hmp_transport_listen(struct hmp_transport *rdma_trans, int listen_port)
 {
 	int retval=0, backlog;
 	struct sockaddr_in addr;
+	struct hmp_device *device;
+	struct hmp_node *curnode=(struct hmp_node *)rdma_trans->nodeptr;
 	
 	retval=rdma_create_id(rdma_trans->event_channel,
 						&rdma_trans->cm_id,
@@ -620,6 +640,11 @@ int hmp_transport_listen(struct hmp_transport *rdma_trans, int listen_port)
 	INFO_LOG("rdma listening on port %d",
 			ntohs(rdma_get_src_port(rdma_trans->cm_id)));
 
+	list_for_each_entry(device, &curnode->dev_list, dev_list_entry){
+		INFO_LOG("rdma trans device pd %p",device->pd);
+		rdma_trans->device=device;
+		break;
+	}
 	return retval;
 	
 cleanid:

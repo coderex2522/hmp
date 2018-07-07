@@ -77,7 +77,7 @@ void hmp_node_init()
 		ERROR_LOG("create listen trans error.");
 		exit(-1);
 	}
-
+	
 	memset(curnode.connect_trans, 0, HMP_NODE_NUM*sizeof(struct hmp_transport*));
 	hmp_transport_listen(curnode.listen_trans, 
 					curnode.config.node_infos[curnode.config.curnode_id].port);
@@ -104,6 +104,7 @@ void hmp_node_release()
 	//sleep(5);
 	//curnode.ctx->stop=1;
 	pthread_join(curnode.ctx->epoll_thread, NULL);
+	INFO_LOG("hmp node release.");
 	hmp_transport_release();
 	hmp_mem_destroy();
 }

@@ -18,7 +18,9 @@ struct hmp_node{
 	/*about memory*/
 	struct hmp_mempool *dram_mempool;
 	void *hybrid_mempool_base;
-	long long alloc_len;
+	struct hmp_mempool *nvm_mempool;
+	//struct rb_root mempool_addr_root;
+
 	
 	int num_devices;
 	struct list_head dev_list;

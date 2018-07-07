@@ -6,6 +6,9 @@ LDFLAGS	:= ${LDFLAGS} -lxml2 -lrdmacm -libverbs -lpthread
 
 all:test
 
+hmp_rbtree.o:hmp_rbtree.c
+	gcc -Wall -g	-c -o $@ $^
+	
 hmp_log.o:hmp_log.c
 	gcc -Wall -g	-c -o $@ $^ 
 
@@ -27,7 +30,7 @@ hmp_node.o:hmp_node.c
 hmp_murmur_hash.o:hmp_murmur_hash.c
 	gcc -Wall -g	-c -o $@ $^
 	
-test:hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_mem.o hmp_node.o hmp_murmur_hash.o test.o
+test:hmp_rbtree.o hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_mem.o hmp_node.o hmp_murmur_hash.o test.o
 	gcc -Wall -g $^ -o $@  ${LDFLAGS}
 	
 clean:
