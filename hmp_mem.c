@@ -46,9 +46,6 @@ static struct hmp_mempool *hmp_mempool_create(int size)
 	}
 	
 	return mempool;
-	
-//cleanmr:
-	//ibv_dereg_mr(mempool->mr);
 
 cleanpagearray:
 	free(mempool->page_array);
@@ -82,19 +79,23 @@ void hmp_mem_init()
 		ERROR_LOG("allocate dram_mempool error.");
 		exit(-1);
 	}
-	INFO_LOG("create dram_mempool success. %d",curnode.dram_mempool->mr->rkey);
-
+	INFO_LOG("create dram_mempool success. %ld %p",curnode.dram_mempool->mr->rkey,curnode.dram_mempool->base_addr);
+	
+	
 	curnode.nvm_mempool=hmp_mempool_create(HMP_NVM_MEM_SIZE);
 	if(!curnode.nvm_mempool){
 		ERROR_LOG("allocate nvm_mempool error.");
 		exit(-1);
 	}
-	INFO_LOG("create nvm_mempool success.%d",curnode.nvm_mempool->mr->rkey);
+	INFO_LOG("create nvm_mempool success.%ld %p",curnode.nvm_mempool->mr->rkey,curnode.nvm_mempool->base_addr);
 
 	/*set config curnode rkey*/
 	curnode_id=curnode.config.curnode_id;
+	curnode.config.node_infos[curnode_id].dram_base_addr=curnode.dram_mempool->base_addr;
 	curnode.config.node_infos[curnode_id].dram_rkey=curnode.dram_mempool->mr->rkey;
+	curnode.config.node_infos[curnode_id].nvm_base_addr=curnode.nvm_mempool->base_addr;
 	curnode.config.node_infos[curnode_id].nvm_rkey=curnode.nvm_mempool->mr->rkey;
+	
 }
 
 void hmp_mem_destroy()

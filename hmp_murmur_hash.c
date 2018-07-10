@@ -72,7 +72,7 @@ uint32_t murmur_hash ( const void * key, size_t length)
 {
   const uint8_t * data = (const uint8_t*)key;
   const int nblocks = length / 4;
-
+  int i;
   uint32_t h1 = 0;
 
   uint32_t c1 = 0xcc9e2d51;
@@ -83,7 +83,7 @@ uint32_t murmur_hash ( const void * key, size_t length)
 
   const uint32_t * blocks = (const uint32_t *)(data + nblocks*4);
 
-  for(int i = -nblocks; i; i++)
+  for(i = -nblocks; i; i++)
   {
     uint32_t k1 = getblock32(blocks,i);
 

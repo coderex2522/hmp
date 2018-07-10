@@ -18,6 +18,7 @@
 #include "hmp_rbtree.h"
 
 #define HMP_NODE_NUM 8
+#define HMP_TASK_SIZE 40
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -60,4 +61,7 @@ void hmp_free(void *addr, int length);
 int hmp_read(void *local_dst, void *hm_src, int length);
 
 int hmp_write(void *hm_dst, void *local_src, int length);
+
+void hmp_print_addr(void *addr, int length);
+
 #endif

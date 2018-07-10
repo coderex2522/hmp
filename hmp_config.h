@@ -7,7 +7,9 @@
 struct hmp_node_info{
 	char addr[HMP_ADDR_LEN];
 	int port;
+	void *dram_base_addr;
 	uint32_t dram_rkey;
+	void *nvm_base_addr;
 	uint32_t nvm_rkey;
 };
 

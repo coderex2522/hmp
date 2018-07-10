@@ -10,11 +10,21 @@
 #include "hmp_context.h"
 #include "hmp_transport.h"
 #include "hmp_node.h"
+#include "hmp_mem.h"
+#include "hmp_task.h"
 
 pthread_once_t init_pthread=PTHREAD_ONCE_INIT;
 pthread_once_t release_pthread=PTHREAD_ONCE_INIT;
 extern struct hmp_node curnode;//define in the hmp_node.c
 
+void hmp_print_addr(void *addr, int length)
+{
+	char *caddr=(char*)addr;
+	int i;
+	for(i=0;i<length;i++)
+		printf("%d ",*(caddr+i));
+	printf("\n");
+}
 /**
  *these functions is used for init devices.
  *1.search device
@@ -129,6 +139,40 @@ void hmp_transport_release()
 	pthread_once(&release_pthread, hmp_device_release_handle);
 }
 
+void hmp_post_recv(struct hmp_transport *rdma_trans)
+{
+	struct ibv_recv_wr recv_wr,*bad_wr=NULL;
+	struct ibv_sge sge;
+	struct hmp_task *task;
+	int err=0;
+	
+	task=hmp_recv_task_create(rdma_trans, HMP_TASK_SIZE);
+	if(!task){
+		ERROR_LOG("recv task create error");
+		return ;
+	}
+	
+	recv_wr.wr_id=(uintptr_t)task;
+	recv_wr.next=NULL;
+	recv_wr.sg_list=&sge;
+	recv_wr.num_sge=1;
+
+	sge.addr=(uintptr_t)task->sge.addr;
+	sge.length=task->sge.length;
+	sge.lkey=curnode.dram_mempool->mr->lkey;
+	
+	err=ibv_post_recv(rdma_trans->qp, &recv_wr, &bad_wr);
+	if(err){
+		ERROR_LOG("ibv_post_recv error");
+	}
+}
+
+static void hmp_pre_post_recv(struct hmp_transport *rdma_trans)
+{
+	int i=0;
+	for(i=0;i<3;i++)
+		hmp_post_recv(rdma_trans);
+}
 
 static struct hmp_device *hmp_device_lookup(void *nodeptr, struct ibv_context *verbs)
 {
@@ -154,7 +198,7 @@ static int on_cm_addr_resolved(struct rdma_cm_event *event, struct hmp_transport
 		ERROR_LOG("not found the hmr device.");
 		return -1;
 	}
-
+	
 	retval=rdma_resolve_route(rdma_trans->cm_id, ROUTE_RESOLVE_TIMEOUT);
 	if(retval){
 		ERROR_LOG("RDMA resolve route error.");
@@ -180,13 +224,47 @@ const char *hmp_ibv_wc_opcode_str(enum ibv_wc_opcode opcode)
 	};
 }
 
+static void hmp_handle_mr_msg(struct hmp_transport *rdma_trans, struct hmp_msg *msg)
+{
+	curnode.config.node_infos[rdma_trans->node_id].dram_rkey=*(uint32_t*)(msg->data);
+	curnode.config.node_infos[rdma_trans->node_id].nvm_rkey=*(uint32_t*)(msg->data+sizeof(uint32_t));
+	curnode.config.node_infos[rdma_trans->node_id].dram_base_addr=*(void**)(msg->data+2*sizeof(uint32_t));
+	curnode.config.node_infos[rdma_trans->node_id].nvm_base_addr=*(void**)(msg->data+2*sizeof(uint32_t)+sizeof(void*));
+	INFO_LOG("node_id %d dram_rkey %ld",rdma_trans->node_id,
+		curnode.config.node_infos[rdma_trans->node_id].dram_rkey);
+	INFO_LOG("node_id %d nvm_rkey %ld",rdma_trans->node_id,
+		curnode.config.node_infos[rdma_trans->node_id].nvm_rkey);
+	INFO_LOG("node_id %d dram_base %p",rdma_trans->node_id,
+		curnode.config.node_infos[rdma_trans->node_id].dram_base_addr);
+	INFO_LOG("node_id %d nvm_base %p",rdma_trans->node_id,
+		curnode.config.node_infos[rdma_trans->node_id].nvm_base_addr);
+}
+
 static void hmp_wc_success_handler(struct ibv_wc *wc)
 {
+	struct hmp_transport *rdma_trans;
+	struct hmp_task *task;
+	struct hmp_msg msg;
+
+	if(wc->opcode==IBV_WC_SEND||wc->opcode==IBV_WC_RECV){
+		task=(struct hmp_task*)(uintptr_t)wc->wr_id;
+		rdma_trans=task->rdma_trans;
+		msg.msg_type=*(enum hmp_msg_type*)task->sge.addr;
+		msg.data_size=*(int *)(task->sge.addr+sizeof(enum hmp_msg_type));
+		msg.data=task->sge.addr+sizeof(enum hmp_msg_type)+sizeof(int);
+	}
+	else{
+		rdma_trans=(struct hmp_transport*)(uintptr_t)wc->wr_id;
+		task=NULL;
+	}
+	
 	switch (wc->opcode)
 	{
 	case IBV_WC_SEND:
 		break;
 	case IBV_WC_RECV:
+		if(msg.msg_type==HMP_MSG_MR)
+			hmp_handle_mr_msg(rdma_trans, &msg);
 		break;
 	case IBV_WC_RDMA_WRITE:
 		break;
@@ -199,6 +277,7 @@ static void hmp_wc_success_handler(struct ibv_wc *wc)
 				hmp_ibv_wc_opcode_str(wc->opcode));
 		break;
 	}
+	
 }
 
 static void hmp_wc_error_handler(struct ibv_wc *wc)
@@ -370,7 +449,8 @@ static int on_cm_route_resolved(struct rdma_cm_event *event, struct hmp_transpor
 		ERROR_LOG("hmr qp create error.");
 		return retval;
 	}
-
+	hmp_pre_post_recv(rdma_trans);
+	
 	memset(&conn_param, 0, sizeof(conn_param));
 	conn_param.retry_count=3;
 	conn_param.rnr_retry_count=3;
@@ -388,7 +468,6 @@ static int on_cm_route_resolved(struct rdma_cm_event *event, struct hmp_transpor
 		goto cleanqp;
 	}
 
-	//hmp_pre_post_recv(rdma_trans);
 	return retval;
 	
 cleanqp:
@@ -402,16 +481,17 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 {
 	struct hmp_transport *new_trans;
 	struct rdma_conn_param conn_param;
-	int retval=0;
-
-	//INFO_LOG("event id %p rdma_trans cm_id %p event_listenid %p",event->id,rdma_trans->cm_id,event->listen_id);
+	int retval=0,i;
+	char *peer_addr;
 	
+	INFO_LOG("event id %p rdma_trans cm_id %p event_listenid %p",event->id,rdma_trans->cm_id,event->listen_id);
+	 
 	new_trans=hmp_transport_create(rdma_trans->nodeptr, rdma_trans->ctx);
 	if(!new_trans){
 		ERROR_LOG("rdma trans process connect request error.");
 		return -1;
 	}
-	INFO_LOG("new trans %p", new_trans);
+	
 	new_trans->cm_id=event->id;
 	event->id->context=new_trans;
 	new_trans->device=hmp_device_lookup(new_trans->nodeptr, event->id->verbs);
@@ -426,6 +506,20 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 		return retval;
 	}
 	
+	peer_addr=inet_ntoa(event->id->route.addr.dst_sin.sin_addr);
+	for(i=0;i<curnode.config.curnode_id;i++){
+		if(strcmp(curnode.config.node_infos[i].addr,peer_addr)==0){
+			INFO_LOG("find addr trans %d %s",i,peer_addr);
+			curnode.connect_trans[i]=new_trans;
+			new_trans->node_id=i;
+			new_trans->region.cur_recv=0;
+			new_trans->region.send_addr=curnode.dram_mempool->base_addr+i*4*HMP_TASK_SIZE;
+			new_trans->region.recv_addr=new_trans->region.send_addr+HMP_TASK_SIZE;
+			break;
+		}
+	}
+	hmp_pre_post_recv(new_trans);
+	
 	memset(&conn_param, 0, sizeof(conn_param));
 	retval=rdma_accept(new_trans->cm_id, &conn_param);
 	if(retval){
@@ -438,8 +532,9 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 
 static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *rdma_trans)
 {
-	int i,retval=0;
-	char *peer_addr;
+	int retval=0;
+	struct hmp_msg msg;
+	
 	memcpy(&rdma_trans->local_addr,
 		&rdma_trans->cm_id->route.addr.src_sin,
 		sizeof(rdma_trans->local_addr));
@@ -450,16 +545,19 @@ static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *
 
 	rdma_trans->trans_state=HMP_TRANSPORT_STATE_CONNECTED;
 
-	peer_addr=inet_ntoa(rdma_trans->peer_addr.sin_addr);
-	INFO_LOG("peer inet addr %s",peer_addr);
+	msg.msg_type=HMP_MSG_MR;
+	msg.data_size=2*sizeof(uint32_t)+2*sizeof(void*);
+	msg.data=malloc(msg.data_size);
+	memcpy(msg.data, 
+		&curnode.config.node_infos[curnode.config.curnode_id].dram_rkey, sizeof(uint32_t));
+	memcpy(msg.data+sizeof(uint32_t), 
+		&curnode.config.node_infos[curnode.config.curnode_id].nvm_rkey, sizeof(uint32_t));
+	memcpy(msg.data+2*sizeof(uint32_t), 
+		&curnode.config.node_infos[curnode.config.curnode_id].dram_base_addr, sizeof(void*));
+	memcpy(msg.data+2*sizeof(uint32_t)+sizeof(void*), 
+		&curnode.config.node_infos[curnode.config.curnode_id].nvm_base_addr, sizeof(void*));
+	hmp_post_send(rdma_trans, &msg);
 	
-	for(i=0;i<curnode.config.curnode_id;i++){
-		if(strcmp(curnode.config.node_infos[i].addr,peer_addr)==0){
-			INFO_LOG("find addr trans %d %s",i,peer_addr);
-			curnode.connect_trans[i]=rdma_trans;
-			break;
-		}
-	}
 	return retval;
 }
 
@@ -492,10 +590,6 @@ static int hmp_handle_ec_event(struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		retval=on_cm_route_resolved(event,rdma_trans);
 		break;
-	/**
-	 * server can call the connect request
-	 * rdma_trans is listen rdma trans
-	 */
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
 		retval=on_cm_connect_request(event,rdma_trans);
 		break;
@@ -607,8 +701,6 @@ int hmp_transport_listen(struct hmp_transport *rdma_trans, int listen_port)
 {
 	int retval=0, backlog;
 	struct sockaddr_in addr;
-	struct hmp_device *device;
-	struct hmp_node *curnode=(struct hmp_node *)rdma_trans->nodeptr;
 	
 	retval=rdma_create_id(rdma_trans->event_channel,
 						&rdma_trans->cm_id,
@@ -640,11 +732,6 @@ int hmp_transport_listen(struct hmp_transport *rdma_trans, int listen_port)
 	INFO_LOG("rdma listening on port %d",
 			ntohs(rdma_get_src_port(rdma_trans->cm_id)));
 
-	list_for_each_entry(device, &curnode->dev_list, dev_list_entry){
-		INFO_LOG("rdma trans device pd %p",device->pd);
-		rdma_trans->device=device;
-		break;
-	}
 	return retval;
 	
 cleanid:
@@ -715,3 +802,69 @@ cleanrdmatrans:
 	return retval;
 }
 
+void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg)
+{
+	struct ibv_send_wr send_wr,*bad_wr=NULL;
+	struct ibv_sge sge;
+	struct hmp_task *task;
+	int err=0;
+
+	while(rdma_trans->trans_state<HMP_TRANSPORT_STATE_CONNECTED);
+	if(rdma_trans->trans_state>HMP_TRANSPORT_STATE_CONNECTED){
+		ERROR_LOG("hmp transport is error.");
+		return ;
+	}
+		
+	task=hmp_send_task_create(rdma_trans, msg);
+	if(!task){
+		ERROR_LOG("hmp_post_send error.");
+		return ;
+	}
+	
+	memset(&send_wr,0,sizeof(send_wr));
+
+	send_wr.wr_id=(uintptr_t)task;
+	send_wr.sg_list=&sge;
+	send_wr.num_sge=1;
+	send_wr.opcode=IBV_WR_SEND;
+	send_wr.send_flags=IBV_SEND_SIGNALED;
+
+	sge.addr=(uintptr_t)task->sge.addr;
+	sge.length=task->sge.length;
+	sge.lkey=curnode.dram_mempool->mr->lkey;
+	
+	err=ibv_post_send(rdma_trans->qp, &send_wr, &bad_wr);
+	if(err){
+		ERROR_LOG("ibv_post_send error.");
+	}
+}
+/*
+void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remote_addr,int length)
+{
+	struct ibv_send_wr send_wr,*bad_wr=NULL;
+	struct ibv_sge sge;
+	int err=0;
+	
+	memset(&send_wr,0,sizeof(struct ibv_send_wr));
+
+	send_wr.wr_id=(uintptr_t)rdma_trans;
+	send_wr.opcode=IBV_WR_RDMA_READ;
+	send_wr.sg_list=&sge;
+	send_wr.send_flags=IBV_SEND_SIGNALED;
+	send_wr.wr.rdma.remote_addr=(uintptr_t)remote_addr;
+	send_wr.wr.rdma.rkey=curnode.config.node_infos[rdma_trans->node_id].dram_rkey;
+
+	sge.addr=(uintptr_t)local_addr;
+	sge.length=length;
+	sge.lkey=curnode.dram_mempool->mr->lkey;
+
+	err=ibv_post_send(rdma_trans->qp, &send_wr, &bad_wr);
+	if(err){
+		ERROR_LOG("ibv_post_send error");
+	}
+}
+
+void hmp_rdma_write()
+{
+
+}*/

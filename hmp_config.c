@@ -18,6 +18,7 @@
 #define HMP_ID_STR "id"
 #define HMP_ADDR_STR "addr"
 #define HMP_PORT_STR "port"
+#define HMP_IB_DEVICE "ens33"//siw_ens33
 
 static void hmr_print_nodes_info(struct hmp_config *global_config)
 {
@@ -75,7 +76,7 @@ static void hmp_set_curnode_id(struct hmp_config *config)
     	sin = (struct sockaddr_in *)(&ifr->ifr_addr);
 
     	ioctl(socketfd, SIOCGIFFLAGS, ifr);
-    	if(((ifr->ifr_flags & IFF_LOOPBACK) == 0) && (ifr->ifr_flags & IFF_UP))
+    	if(((ifr->ifr_flags & IFF_LOOPBACK) == 0) && (ifr->ifr_flags & IFF_UP)&&(strcmp(ifr->ifr_name,HMP_IB_DEVICE)==0))
     	{
         	INFO_LOG("%s %s",
             	ifr->ifr_name,

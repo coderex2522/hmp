@@ -21,6 +21,9 @@ hmp_context.o:hmp_context.c
 hmp_transport.o:hmp_transport.c
 	gcc -Wall -g	-c -o $@ $^ ${LDFLAGS}
 
+hmp_task.o:hmp_task.c
+	gcc -Wall -g	-c -o $@ $^
+	
 hmp_mem.o:hmp_mem.c
 	gcc -Wall -g	-c -o $@ $^
 	
@@ -30,7 +33,7 @@ hmp_node.o:hmp_node.c
 hmp_murmur_hash.o:hmp_murmur_hash.c
 	gcc -Wall -g	-c -o $@ $^
 	
-test:hmp_rbtree.o hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_mem.o hmp_node.o hmp_murmur_hash.o test.o
+test:hmp_rbtree.o hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_task.o hmp_mem.o hmp_node.o hmp_murmur_hash.o test.o
 	gcc -Wall -g $^ -o $@  ${LDFLAGS}
 	
 clean:

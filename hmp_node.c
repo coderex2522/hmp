@@ -58,6 +58,7 @@ static void hmp_hash_init()
 
 void hmp_node_init()
 {
+	struct hmp_device *device;
 	int i;
 	/*get the config.xml information*/
 	hmp_config_init(&curnode.config);
@@ -65,7 +66,7 @@ void hmp_node_init()
 	hmp_hash_init();
 	
 	hmp_transport_init();
-
+	
 	curnode.ctx=hmp_context_create();
 	if(!curnode.ctx){
 		ERROR_LOG("create context error.");
@@ -77,11 +78,16 @@ void hmp_node_init()
 		ERROR_LOG("create listen trans error.");
 		exit(-1);
 	}
-	
-	memset(curnode.connect_trans, 0, HMP_NODE_NUM*sizeof(struct hmp_transport*));
+	list_for_each_entry(device, &curnode.dev_list, dev_list_entry){
+		curnode.listen_trans->device=device;
+		break;
+	}
+	/*hmp memory init*/
+	hmp_mem_init();
 	hmp_transport_listen(curnode.listen_trans, 
 					curnode.config.node_infos[curnode.config.curnode_id].port);
-
+	
+	memset(curnode.connect_trans, 0, HMP_NODE_NUM*sizeof(struct hmp_transport*));
 	for(i=curnode.config.curnode_id+1;i<curnode.config.node_cnt;i++){
 		INFO_LOG("create the [%d]-th transport.",i);
 		curnode.connect_trans[i]=hmp_transport_create(&curnode, curnode.ctx);
@@ -89,13 +95,14 @@ void hmp_node_init()
 			ERROR_LOG("create rdma trans error.");
 			exit(-1);
 		}
+		curnode.connect_trans[i]->node_id=i;
+		curnode.connect_trans[i]->region.cur_recv=0;
+		curnode.connect_trans[i]->region.send_addr=curnode.dram_mempool->base_addr+i*4*HMP_TASK_SIZE;
+		curnode.connect_trans[i]->region.recv_addr=curnode.connect_trans[i]->region.send_addr+HMP_TASK_SIZE;
 		hmp_transport_connect(curnode.connect_trans[i],
 							curnode.config.node_infos[i].addr,
 							curnode.config.node_infos[i].port);
 	}
-
-	/*init mempool*/
-	hmp_mem_init();
 }
 
 

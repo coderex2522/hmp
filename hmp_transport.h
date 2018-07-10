@@ -5,8 +5,8 @@
 #define ROUTE_RESOLVE_TIMEOUT 500
 
 /*set the max send/recv wr num*/
-#define MAX_SEND_WR 256
-#define MAX_RECV_WR 256
+#define MAX_SEND_WR 128
+#define MAX_RECV_WR 128
 #define MAX_SEND_SGE 4
 
 /*call ibv_create_cq alloc size--second parameter*/
@@ -45,11 +45,18 @@ struct hmp_cq{
 	struct hmp_context *ctx;
 };
 
+struct hmp_region{
+	void *send_addr;
+	void *recv_addr;
+	int cur_recv;
+};
+
 struct hmp_transport{
 	struct sockaddr_in	peer_addr;
 	struct sockaddr_in local_addr;
 	
 	void *nodeptr;
+	int node_id;
 	enum hmp_transport_state trans_state;
 	struct hmp_context *ctx;
 	struct hmp_device *device;
@@ -57,6 +64,7 @@ struct hmp_transport{
 	struct ibv_qp	*qp;
 	struct rdma_event_channel *event_channel;
 	struct rdma_cm_id	*cm_id;
+	struct hmp_region region;
 };
 
 
@@ -70,4 +78,9 @@ int hmp_transport_listen(struct hmp_transport *rdma_trans, int listen_port);
 
 int hmp_transport_connect(struct hmp_transport* rdma_trans,
 								const char *url, int port);
+void hmp_post_recv(struct hmp_transport *rdma_trans);
+
+void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg);
+
+
 #endif
