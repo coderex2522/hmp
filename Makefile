@@ -38,3 +38,4 @@ test:hmp_rbtree.o hmp_log.o hmp_config.o hmp_context.o hmp_transport.o hmp_task.
 	
 clean:
 	rm -rf *.o
+	rm -rf test

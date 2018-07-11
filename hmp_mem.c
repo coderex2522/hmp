@@ -37,8 +37,8 @@ static struct hmp_mempool *hmp_mempool_create(int size)
 	mempool->alloc_size=0;
 	mempool->mr=ibv_reg_mr(curnode.listen_trans->device->pd, mempool->base_addr, 
 							mempool->size,
-							IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | 
-							IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC);
+							IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	//| IBV_ACCESS_REMOTE_READ 
 	
 	if(!mempool->mr){
 		ERROR_LOG("rdma register memory error.");
@@ -68,7 +68,7 @@ void *hmp_get_hybrid_mempool_addr()
 
 void hmp_mem_init()
 {
-	int curnode_id;
+	struct hmp_node_info *curnode_info;
 	
 	/*set the start addr of the hybrid mempool*/
 	curnode.hybrid_mempool_base=hmp_get_hybrid_mempool_addr();
@@ -82,19 +82,20 @@ void hmp_mem_init()
 	INFO_LOG("create dram_mempool success. %ld %p",curnode.dram_mempool->mr->rkey,curnode.dram_mempool->base_addr);
 	
 	
-	curnode.nvm_mempool=hmp_mempool_create(HMP_NVM_MEM_SIZE);
+	/*curnode.nvm_mempool=hmp_mempool_create(HMP_NVM_MEM_SIZE);
 	if(!curnode.nvm_mempool){
 		ERROR_LOG("allocate nvm_mempool error.");
 		exit(-1);
 	}
 	INFO_LOG("create nvm_mempool success.%ld %p",curnode.nvm_mempool->mr->rkey,curnode.nvm_mempool->base_addr);
-
+	*/
+	
 	/*set config curnode rkey*/
-	curnode_id=curnode.config.curnode_id;
-	curnode.config.node_infos[curnode_id].dram_base_addr=curnode.dram_mempool->base_addr;
-	curnode.config.node_infos[curnode_id].dram_rkey=curnode.dram_mempool->mr->rkey;
-	curnode.config.node_infos[curnode_id].nvm_base_addr=curnode.nvm_mempool->base_addr;
-	curnode.config.node_infos[curnode_id].nvm_rkey=curnode.nvm_mempool->mr->rkey;
+	curnode_info=&curnode.config.node_infos[curnode.config.curnode_id];
+	curnode_info->dram_mr.addr=curnode.dram_mempool->base_addr;
+	curnode_info->dram_mr.rkey=curnode.dram_mempool->mr->rkey;
+	//curnode.config.node_infos[curnode_id].nvm_base_addr=curnode.nvm_mempool->base_addr;
+	//curnode.config.node_infos[curnode_id].nvm_rkey=curnode.nvm_mempool->mr->rkey;
 	
 }
 
@@ -113,12 +114,12 @@ void* hmp_malloc(int length)
 	//need pthread_mutex protected;
 	void *res=NULL;
 	assert(length>0);
-	res=curnode.dram_mempool->base_addr+curnode.dram_mempool->alloc_size;
+	
+	void *addr=curnode.dram_mempool->base_addr+curnode.config.node_cnt*4*HMP_TASK_SIZE;
+	res=addr+curnode.dram_mempool->alloc_size;
 	curnode.dram_mempool->alloc_size+=length;
 	return res;
 }
-
-
 
 void hmp_free(void *addr, int length)
 {
@@ -134,31 +135,35 @@ int hmp_get_hm_node_id(void **hm_addr)
 	*hm_addr=(void*)tmp;
 	INFO_LOG("hm_src %d",node_id);
 	INFO_LOG("hm_addr %p\n",*hm_addr);
+	assert(node_id>=0&&node_id<curnode.config.node_cnt);
 	return node_id;
 }
 
-
-int hmp_read(void *local_dst, void *hm_src, int length)
+int hmp_read(void *local_dst, void *remote_src, int length)
 {
 	int hm_node_id=0;
 
-	hm_node_id=hmp_get_hm_node_id(&hm_src);
+	hm_node_id=hmp_get_hm_node_id(&remote_src);
+	
 	if(hm_node_id==curnode.config.curnode_id)
-		memcpy(local_dst,hm_src,length);
+		memcpy(local_dst,remote_src,length);
 	else{
-		;
-	}	
+		//hmp_rdma_read(curnode.connect_trans[hm_node_id], local_dst, hm_src, length);
+	}
 	return 0;	
 }
 
-int hmp_write(void *hm_dst, void *local_src, int length)
+int hmp_write(void *remote_dst, void *local_src, int length)
 {
-	int hm_node_id=0;
-	hm_node_id=hmp_get_hm_node_id(&hm_dst);
+	int hm_node_id=-1;
+	
+	hm_node_id=hmp_get_hm_node_id(&remote_dst);
+	
 	if(hm_node_id==curnode.config.curnode_id)
-		memcpy(hm_dst,local_src,length);
+		memcpy(remote_dst,local_src,length);
 	else{
-		;
+		hmp_rdma_write(curnode.connect_trans[hm_node_id], 
+					local_src, remote_dst, length);
 	}
 	return 0;
 }

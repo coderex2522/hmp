@@ -18,7 +18,7 @@ struct hmp_node{
 	/*about memory*/
 	struct hmp_mempool *dram_mempool;
 	void *hybrid_mempool_base;
-	struct hmp_mempool *nvm_mempool;
+	//struct hmp_mempool *nvm_mempool;
 	//struct rb_root mempool_addr_root;
 
 	

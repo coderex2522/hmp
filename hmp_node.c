@@ -108,8 +108,6 @@ void hmp_node_init()
 
 void hmp_node_release()
 {
-	//sleep(5);
-	//curnode.ctx->stop=1;
 	pthread_join(curnode.ctx->epoll_thread, NULL);
 	INFO_LOG("hmp node release.");
 	hmp_transport_release();

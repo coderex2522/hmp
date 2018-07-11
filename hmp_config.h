@@ -4,13 +4,17 @@
 #define HMP_CONFIG_FILE "config.xml"
 #define HMP_ADDR_LEN 18
 
+struct hmp_mr_info{
+	void	*addr;
+	size_t	length;
+	uint32_t	rkey;
+};
+
 struct hmp_node_info{
 	char addr[HMP_ADDR_LEN];
 	int port;
-	void *dram_base_addr;
-	uint32_t dram_rkey;
-	void *nvm_base_addr;
-	uint32_t nvm_rkey;
+	struct hmp_mr_info dram_mr;
+	struct hmp_mr_info nvm_mr;
 };
 
 struct hmp_config{

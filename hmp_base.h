@@ -25,6 +25,12 @@
 #endif
 #define min(a,b) (a>b?b:a)
 
+#ifndef bool
+#define bool char
+#define true 1
+#define false 0
+#endif
+
 struct hmp_config;
 struct hmp_context;
 struct hmp_node;
@@ -40,7 +46,7 @@ enum hmp_log_level{
 };
 
 enum hmp_msg_type{
-	HMP_MSG_MR,
+	HMP_MSG_INIT,
 	HMP_MSG_NORMAL,
 	HMP_MSG_READ,
 	HMP_MSG_WRITE,
@@ -58,9 +64,9 @@ void* hmp_malloc(int length);
 
 void hmp_free(void *addr, int length);
 
-int hmp_read(void *local_dst, void *hm_src, int length);
+int hmp_read(void *local_dst, void *remote_src, int length);
 
-int hmp_write(void *hm_dst, void *local_src, int length);
+int hmp_write(void *remote_dst, void *local_src, int length);
 
 void hmp_print_addr(void *addr, int length);
 

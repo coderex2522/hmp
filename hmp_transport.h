@@ -17,11 +17,6 @@ enum hmp_transport_state {
 	HMP_TRANSPORT_STATE_LISTEN,
 	HMP_TRANSPORT_STATE_CONNECTING,
 	HMP_TRANSPORT_STATE_CONNECTED,
-	/* when the two sides exchange the info of one sided RDMA,
-	 * the trans state will from CONNECTED to S-R-DCONNECTED
-	 */
-	HMP_TRANSPORT_STATE_SCONNECTED,
-	HMP_TRANSPORT_STATE_RCONNECTED,
 	HMP_TRANSPORT_STATE_DISCONNECTED,
 	HMP_TRANSPORT_STATE_RECONNECT,
 	HMP_TRANSPORT_STATE_CLOSED,
@@ -82,5 +77,8 @@ void hmp_post_recv(struct hmp_transport *rdma_trans);
 
 void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg);
 
+void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remote_addr,int length);
+
+void hmp_rdma_write(struct hmp_transport *rdma_trans, void *local_addr, void *remote_addr, int length);
 
 #endif

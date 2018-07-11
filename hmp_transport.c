@@ -146,7 +146,7 @@ void hmp_post_recv(struct hmp_transport *rdma_trans)
 	struct hmp_task *task;
 	int err=0;
 	
-	task=hmp_recv_task_create(rdma_trans, HMP_TASK_SIZE);
+	task=hmp_recv_task_create(rdma_trans, HMP_TASK_SIZE, true);
 	if(!task){
 		ERROR_LOG("recv task create error");
 		return ;
@@ -159,7 +159,7 @@ void hmp_post_recv(struct hmp_transport *rdma_trans)
 
 	sge.addr=(uintptr_t)task->sge.addr;
 	sge.length=task->sge.length;
-	sge.lkey=curnode.dram_mempool->mr->lkey;
+	sge.lkey=task->sge.lkey;
 	
 	err=ibv_post_recv(rdma_trans->qp, &recv_wr, &bad_wr);
 	if(err){
@@ -170,7 +170,7 @@ void hmp_post_recv(struct hmp_transport *rdma_trans)
 static void hmp_pre_post_recv(struct hmp_transport *rdma_trans)
 {
 	int i=0;
-	for(i=0;i<3;i++)
+	for(i=0;i<2;i++)
 		hmp_post_recv(rdma_trans);
 }
 
@@ -226,18 +226,18 @@ const char *hmp_ibv_wc_opcode_str(enum ibv_wc_opcode opcode)
 
 static void hmp_handle_mr_msg(struct hmp_transport *rdma_trans, struct hmp_msg *msg)
 {
-	curnode.config.node_infos[rdma_trans->node_id].dram_rkey=*(uint32_t*)(msg->data);
-	curnode.config.node_infos[rdma_trans->node_id].nvm_rkey=*(uint32_t*)(msg->data+sizeof(uint32_t));
-	curnode.config.node_infos[rdma_trans->node_id].dram_base_addr=*(void**)(msg->data+2*sizeof(uint32_t));
-	curnode.config.node_infos[rdma_trans->node_id].nvm_base_addr=*(void**)(msg->data+2*sizeof(uint32_t)+sizeof(void*));
-	INFO_LOG("node_id %d dram_rkey %ld",rdma_trans->node_id,
-		curnode.config.node_infos[rdma_trans->node_id].dram_rkey);
-	INFO_LOG("node_id %d nvm_rkey %ld",rdma_trans->node_id,
-		curnode.config.node_infos[rdma_trans->node_id].nvm_rkey);
-	INFO_LOG("node_id %d dram_base %p",rdma_trans->node_id,
-		curnode.config.node_infos[rdma_trans->node_id].dram_base_addr);
-	INFO_LOG("node_id %d nvm_base %p",rdma_trans->node_id,
-		curnode.config.node_infos[rdma_trans->node_id].nvm_base_addr);
+	struct hmp_node_info *peer_node_info=&curnode.config.node_infos[rdma_trans->node_id];
+	peer_node_info->dram_mr.addr=*(void**)(msg->data);
+	peer_node_info->dram_mr.length=*(size_t*)(msg->data+sizeof(void*));
+	peer_node_info->dram_mr.rkey=*(uint32_t*)(msg->data+sizeof(void*)+sizeof(size_t));
+
+	INFO_LOG("node_id %d addr %p length %d rkey %ld",
+		rdma_trans->node_id,
+		peer_node_info->dram_mr.addr,
+		peer_node_info->dram_mr.length,
+		peer_node_info->dram_mr.rkey);
+
+	rdma_trans->trans_state=HMP_TRANSPORT_STATE_CONNECTED;
 }
 
 static void hmp_wc_success_handler(struct ibv_wc *wc)
@@ -246,16 +246,13 @@ static void hmp_wc_success_handler(struct ibv_wc *wc)
 	struct hmp_task *task;
 	struct hmp_msg msg;
 
+	task=(struct hmp_task*)(uintptr_t)wc->wr_id;
+	rdma_trans=task->rdma_trans;
+
 	if(wc->opcode==IBV_WC_SEND||wc->opcode==IBV_WC_RECV){
-		task=(struct hmp_task*)(uintptr_t)wc->wr_id;
-		rdma_trans=task->rdma_trans;
 		msg.msg_type=*(enum hmp_msg_type*)task->sge.addr;
 		msg.data_size=*(int *)(task->sge.addr+sizeof(enum hmp_msg_type));
 		msg.data=task->sge.addr+sizeof(enum hmp_msg_type)+sizeof(int);
-	}
-	else{
-		rdma_trans=(struct hmp_transport*)(uintptr_t)wc->wr_id;
-		task=NULL;
 	}
 	
 	switch (wc->opcode)
@@ -263,12 +260,13 @@ static void hmp_wc_success_handler(struct ibv_wc *wc)
 	case IBV_WC_SEND:
 		break;
 	case IBV_WC_RECV:
-		if(msg.msg_type==HMP_MSG_MR)
+		if(msg.msg_type==HMP_MSG_INIT)
 			hmp_handle_mr_msg(rdma_trans, &msg);
 		break;
 	case IBV_WC_RDMA_WRITE:
 		break;
 	case IBV_WC_RDMA_READ:
+		//task->type=HMP_TASK_DONE;
 		break;
 	case IBV_WC_RECV_RDMA_WITH_IMM:
 		break;
@@ -453,12 +451,12 @@ static int on_cm_route_resolved(struct rdma_cm_event *event, struct hmp_transpor
 	
 	memset(&conn_param, 0, sizeof(conn_param));
 	conn_param.retry_count=3;
-	conn_param.rnr_retry_count=3;
+	conn_param.rnr_retry_count=7;
 
-	conn_param.responder_resources =
-		rdma_trans->device->device_attr.max_qp_rd_atom;
-	conn_param.initiator_depth =
-		rdma_trans->device->device_attr.max_qp_init_rd_atom;
+	conn_param.responder_resources = 1;
+		//rdma_trans->device->device_attr.max_qp_rd_atom;
+	conn_param.initiator_depth = 1;
+		//rdma_trans->device->device_attr.max_qp_init_rd_atom;
 	
 	INFO_LOG("RDMA Connect.");
 	
@@ -530,6 +528,20 @@ static int on_cm_connect_request(struct rdma_cm_event *event, struct hmp_transpo
 	return retval;
 }
 
+static void hmp_build_init_msg(struct hmp_msg *msg)
+{
+	msg->msg_type=HMP_MSG_INIT;
+	msg->data_size=sizeof(void*)+sizeof(size_t)+sizeof(uint32_t);
+	msg->data=malloc(msg->data_size);
+	
+	memcpy(msg->data,
+		&curnode.dram_mempool->base_addr, sizeof(void*));
+	memcpy(msg->data+sizeof(void*), 
+		&curnode.dram_mempool->mr->length, sizeof(size_t));
+	memcpy(msg->data+sizeof(void*)+sizeof(size_t), 
+		&curnode.dram_mempool->mr->rkey, sizeof(uint32_t));
+}
+
 static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *rdma_trans)
 {
 	int retval=0;
@@ -543,19 +555,7 @@ static int on_cm_established(struct rdma_cm_event *event, struct hmp_transport *
 		&rdma_trans->cm_id->route.addr.dst_sin,
 		sizeof(rdma_trans->peer_addr));
 
-	rdma_trans->trans_state=HMP_TRANSPORT_STATE_CONNECTED;
-
-	msg.msg_type=HMP_MSG_MR;
-	msg.data_size=2*sizeof(uint32_t)+2*sizeof(void*);
-	msg.data=malloc(msg.data_size);
-	memcpy(msg.data, 
-		&curnode.config.node_infos[curnode.config.curnode_id].dram_rkey, sizeof(uint32_t));
-	memcpy(msg.data+sizeof(uint32_t), 
-		&curnode.config.node_infos[curnode.config.curnode_id].nvm_rkey, sizeof(uint32_t));
-	memcpy(msg.data+2*sizeof(uint32_t), 
-		&curnode.config.node_infos[curnode.config.curnode_id].dram_base_addr, sizeof(void*));
-	memcpy(msg.data+2*sizeof(uint32_t)+sizeof(void*), 
-		&curnode.config.node_infos[curnode.config.curnode_id].nvm_base_addr, sizeof(void*));
+	hmp_build_init_msg(&msg);
 	hmp_post_send(rdma_trans, &msg);
 	
 	return retval;
@@ -808,16 +808,10 @@ void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg)
 	struct ibv_sge sge;
 	struct hmp_task *task;
 	int err=0;
-
-	while(rdma_trans->trans_state<HMP_TRANSPORT_STATE_CONNECTED);
-	if(rdma_trans->trans_state>HMP_TRANSPORT_STATE_CONNECTED){
-		ERROR_LOG("hmp transport is error.");
-		return ;
-	}
 		
-	task=hmp_send_task_create(rdma_trans, msg);
+	task=hmp_send_task_create(rdma_trans, msg, true);
 	if(!task){
-		ERROR_LOG("hmp_post_send error.");
+		ERROR_LOG("send task create error.");
 		return ;
 	}
 	
@@ -831,40 +825,107 @@ void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg)
 
 	sge.addr=(uintptr_t)task->sge.addr;
 	sge.length=task->sge.length;
-	sge.lkey=curnode.dram_mempool->mr->lkey;
+	sge.lkey=task->sge.lkey;
 	
 	err=ibv_post_send(rdma_trans->qp, &send_wr, &bad_wr);
 	if(err){
 		ERROR_LOG("ibv_post_send error.");
 	}
 }
+
+static int hmp_transport_check_state(struct hmp_transport *rdma_trans)
+{
+	while(rdma_trans->trans_state<HMP_TRANSPORT_STATE_CONNECTED){
+		;
+	}
+	if(rdma_trans->trans_state>HMP_TRANSPORT_STATE_CONNECTED){
+		ERROR_LOG("rdma transport exits error.");
+		return -1;
+	}
+
+	return 0;
+}
+
+void hmp_rdma_write(struct hmp_transport *rdma_trans, void *local_addr, void *remote_addr, int length)
+{
+	struct hmp_task *task;
+	struct ibv_send_wr wr, *bad_wr = NULL;
+    struct ibv_sge sge;
+	int err=0;
+
+	if(hmp_transport_check_state(rdma_trans)==-1){
+		return ;
+	}
+
+	task=hmp_write_task_create(rdma_trans, local_addr, length, true);
+	if(!task){
+		ERROR_LOG("write task create error.");
+		return ;
+	}
+	
+    memset(&wr, 0, sizeof(wr));
+
+    wr.wr_id = (uintptr_t)task;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.sg_list = &sge;
+    wr.num_sge = 1;
+    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.wr.rdma.remote_addr = (uintptr_t)remote_addr;
+    wr.wr.rdma.rkey = curnode.config.node_infos[rdma_trans->node_id].dram_mr.rkey;
+
+    sge.addr = (uintptr_t)task->sge.addr;
+    sge.length = task->sge.length;
+    sge.lkey = task->sge.lkey;
+	
+    err=ibv_post_send(rdma_trans->qp, &wr, &bad_wr);
+	if(err){
+		ERROR_LOG("ibv_post_send error.");
+	}
+}
+
 /*
 void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remote_addr,int length)
 {
+	struct hmp_task *read_task;
 	struct ibv_send_wr send_wr,*bad_wr=NULL;
 	struct ibv_sge sge;
 	int err=0;
+
+	while(rdma_trans->trans_state<HMP_TRANSPORT_STATE_CONNECTED);
+	if(rdma_trans->trans_state>HMP_TRANSPORT_STATE_CONNECTED){
+		ERROR_LOG("hmp transport is error.");
+		return ;
+	}
+
+	read_task=hmp_read_task_create(rdma_trans, local_addr, length);
+	if(!read_task){
+		ERROR_LOG("create task error.");
+		return ;
+	}
 	
 	memset(&send_wr,0,sizeof(struct ibv_send_wr));
 
-	send_wr.wr_id=(uintptr_t)rdma_trans;
+	send_wr.wr_id=(uintptr_t)read_task;
 	send_wr.opcode=IBV_WR_RDMA_READ;
 	send_wr.sg_list=&sge;
 	send_wr.send_flags=IBV_SEND_SIGNALED;
 	send_wr.wr.rdma.remote_addr=(uintptr_t)remote_addr;
 	send_wr.wr.rdma.rkey=curnode.config.node_infos[rdma_trans->node_id].dram_rkey;
 
-	sge.addr=(uintptr_t)local_addr;
-	sge.length=length;
+	INFO_LOG("remote addr %p dram rkey %ld",remote_addr,curnode.config.node_infos[rdma_trans->node_id].dram_rkey);
+	sge.addr=(uintptr_t)read_task->sge.addr;
+	sge.length=read_task->sge.length;
 	sge.lkey=curnode.dram_mempool->mr->lkey;
+	INFO_LOG("local addr %p",read_task->sge.addr);
 
 	err=ibv_post_send(rdma_trans->qp, &send_wr, &bad_wr);
 	if(err){
 		ERROR_LOG("ibv_post_send error");
 	}
-}
 
-void hmp_rdma_write()
-{
-
+	while(read_task->type!=HMP_TASK_DONE){
+		;
+	}
+	INFO_LOG("read content is %s",(char*)read_task->sge.addr);
 }*/
+
