@@ -54,7 +54,7 @@ struct hmp_task *hmp_recv_task_create(struct hmp_transport *rdma_trans, int size
 	return task;
 }
 
-struct hmp_task *hmp_read_task_create(struct hmp_transport *rdma_trans, void *addr, int length)
+struct hmp_task *hmp_read_task_create(struct hmp_transport *rdma_trans, void *addr, int length, bool is_dram)
 {
 	struct hmp_task *task;
 	
@@ -63,13 +63,14 @@ struct hmp_task *hmp_read_task_create(struct hmp_transport *rdma_trans, void *ad
 		ERROR_LOG("allocate memory error.");
 		return NULL;
 	}
-
 	
 	task->type=HMP_TASK_READ;
 	task->sge.addr=addr;
 	task->sge.length=length;
 	task->rdma_trans=rdma_trans;
 	
+	if(is_dram)
+		task->sge.lkey=curnode.dram_mempool->mr->lkey;
 	return task;
 }
 

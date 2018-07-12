@@ -18,7 +18,7 @@
 #define HMP_ID_STR "id"
 #define HMP_ADDR_STR "addr"
 #define HMP_PORT_STR "port"
-#define HMP_IB_DEVICE "ens33"//siw_ens33
+#define HMP_IB_DEVICE "ib0"//siw_ens33
 
 static void hmr_print_nodes_info(struct hmp_config *global_config)
 {

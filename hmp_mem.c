@@ -133,8 +133,8 @@ int hmp_get_hm_node_id(void **hm_addr)
 	node_id=tmp>>48;
 	tmp=tmp%281474976710656;
 	*hm_addr=(void*)tmp;
-	INFO_LOG("hm_src %d",node_id);
-	INFO_LOG("hm_addr %p\n",*hm_addr);
+	INFO_LOG("remote_node_id %d",node_id);
+	INFO_LOG("remote_addr %p",*hm_addr);
 	assert(node_id>=0&&node_id<curnode.config.node_cnt);
 	return node_id;
 }
@@ -148,12 +148,12 @@ int hmp_read(void *local_dst, void *remote_src, int length)
 	if(hm_node_id==curnode.config.curnode_id)
 		memcpy(local_dst,remote_src,length);
 	else{
-		//hmp_rdma_read(curnode.connect_trans[hm_node_id], local_dst, hm_src, length);
+		hmp_rdma_read(curnode.connect_trans[hm_node_id], local_dst, remote_src, length);
 	}
 	return 0;	
 }
 
-int hmp_write(void *remote_dst, void *local_src, int length)
+int hmp_write(void *local_src, void *remote_dst, int length)
 {
 	int hm_node_id=-1;
 	

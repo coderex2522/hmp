@@ -266,7 +266,7 @@ static void hmp_wc_success_handler(struct ibv_wc *wc)
 	case IBV_WC_RDMA_WRITE:
 		break;
 	case IBV_WC_RDMA_READ:
-		//task->type=HMP_TASK_DONE;
+		task->type=HMP_TASK_DONE;
 		break;
 	case IBV_WC_RECV_RDMA_WITH_IMM:
 		break;
@@ -853,9 +853,9 @@ void hmp_rdma_write(struct hmp_transport *rdma_trans, void *local_addr, void *re
     struct ibv_sge sge;
 	int err=0;
 
-	if(hmp_transport_check_state(rdma_trans)==-1){
+	if(hmp_transport_check_state(rdma_trans)==-1)
 		return ;
-	}
+	
 
 	task=hmp_write_task_create(rdma_trans, local_addr, length, true);
 	if(!task){
@@ -883,21 +883,18 @@ void hmp_rdma_write(struct hmp_transport *rdma_trans, void *local_addr, void *re
 	}
 }
 
-/*
-void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remote_addr,int length)
+
+void hmp_rdma_read(struct hmp_transport *rdma_trans, void *local_addr, void *remote_addr, int length)
 {
 	struct hmp_task *read_task;
 	struct ibv_send_wr send_wr,*bad_wr=NULL;
 	struct ibv_sge sge;
 	int err=0;
 
-	while(rdma_trans->trans_state<HMP_TRANSPORT_STATE_CONNECTED);
-	if(rdma_trans->trans_state>HMP_TRANSPORT_STATE_CONNECTED){
-		ERROR_LOG("hmp transport is error.");
+	if(hmp_transport_check_state(rdma_trans)==-1)
 		return ;
-	}
 
-	read_task=hmp_read_task_create(rdma_trans, local_addr, length);
+	read_task=hmp_read_task_create(rdma_trans, local_addr, length, true);
 	if(!read_task){
 		ERROR_LOG("create task error.");
 		return ;
@@ -908,24 +905,21 @@ void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remot
 	send_wr.wr_id=(uintptr_t)read_task;
 	send_wr.opcode=IBV_WR_RDMA_READ;
 	send_wr.sg_list=&sge;
+	send_wr.num_sge=1;
 	send_wr.send_flags=IBV_SEND_SIGNALED;
 	send_wr.wr.rdma.remote_addr=(uintptr_t)remote_addr;
-	send_wr.wr.rdma.rkey=curnode.config.node_infos[rdma_trans->node_id].dram_rkey;
+	send_wr.wr.rdma.rkey=curnode.config.node_infos[rdma_trans->node_id].dram_mr.rkey;
 
-	INFO_LOG("remote addr %p dram rkey %ld",remote_addr,curnode.config.node_infos[rdma_trans->node_id].dram_rkey);
 	sge.addr=(uintptr_t)read_task->sge.addr;
 	sge.length=read_task->sge.length;
-	sge.lkey=curnode.dram_mempool->mr->lkey;
-	INFO_LOG("local addr %p",read_task->sge.addr);
+	sge.lkey=read_task->sge.lkey;
 
 	err=ibv_post_send(rdma_trans->qp, &send_wr, &bad_wr);
 	if(err){
 		ERROR_LOG("ibv_post_send error");
 	}
 
-	while(read_task->type!=HMP_TASK_DONE){
-		;
-	}
-	INFO_LOG("read content is %s",(char*)read_task->sge.addr);
-}*/
+	while(read_task->type!=HMP_TASK_DONE);
+	INFO_LOG("read content is %s",local_addr);
+}
 

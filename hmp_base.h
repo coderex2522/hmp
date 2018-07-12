@@ -66,7 +66,7 @@ void hmp_free(void *addr, int length);
 
 int hmp_read(void *local_dst, void *remote_src, int length);
 
-int hmp_write(void *remote_dst, void *local_src, int length);
+int hmp_write(void *local_src, void *remote_dst, int length);
 
 void hmp_print_addr(void *addr, int length);
 

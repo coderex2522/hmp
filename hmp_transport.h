@@ -77,7 +77,7 @@ void hmp_post_recv(struct hmp_transport *rdma_trans);
 
 void hmp_post_send(struct hmp_transport *rdma_trans, struct hmp_msg *msg);
 
-void hmp_rdma_read(struct hmp_transport *rdma_trans,void *local_addr,void *remote_addr,int length);
+void hmp_rdma_read(struct hmp_transport *rdma_trans, void *local_addr, void *remote_addr, int length);
 
 void hmp_rdma_write(struct hmp_transport *rdma_trans, void *local_addr, void *remote_addr, int length);
 
